@@ -1,7 +1,7 @@
 module mzp;
 import std::math, std::core::string, std::core::dstring, std::io, libc;
 import raylib6::rl;
-import bmu::ui, bmu::txt, bmu::sys;
+import bmu::ui, bmu::txt, bmu::sys, bmu::picker;
 import mzp::engine, mzp::ocr;
 
 // mzp - manifest ze pdf. Continuous page view, Ctrl+S sidebar (Pages / Contents), Ctrl+F search, text selection +
@@ -91,6 +91,7 @@ ui::Shortcut[*] help_rows = {
 	{ "Escape", "Leave presenter view", false },
 	{ "APP", "", true },
 	{ "Ctrl + Shift + / - / 0", "Zoom the interface", false },
+	{ "Ctrl + O", "Open a PDF", false },
 	{ "Ctrl + K", "This dialog", false },
 	{ "q", "Quit", false },
 };
@@ -110,6 +111,7 @@ fn void prefs_load() => @pool()
 		if (line.starts_with("bar=")) bar = line == "bar=1";
 		if (line.starts_with("bar_tab=")) bar_tab = line == "bar_tab=1" ? 1 : 0;
 		if (line.starts_with("ocr=")) ocr_on = line != "ocr=0";
+		if (line.starts_with("dir=")) txt::set(&picker::last_dir, line[4..]);
 		if (line.starts_with("ui_scale="))
 		{
 			if (try v = line[9..].to_int()) if (v == 0 || (v >= 75 && v <= 300)) ui_percent = v;
@@ -123,7 +125,8 @@ fn void prefs_save() => @pool()
 	String file = txt::view(&config_file);
 	if (!sys::mkdirs(txt::dirname(file))) return;
 	String tmp = txt::join(txt::dirname(file), "settings.tmp");
-	if (sys::write_file(tmp, string::tformat("bar=%d\nbar_tab=%d\nui_scale=%d\nocr=%d\n", bar ? 1 : 0, bar_tab, ui_percent, ocr_on ? 1 : 0))) sys::move(tmp, file);
+	String data = string::tformat("bar=%d\nbar_tab=%d\nui_scale=%d\nocr=%d\ndir=%s\n", bar ? 1 : 0, bar_tab, ui_percent, ocr_on ? 1 : 0, txt::view(&picker::last_dir));
+	if (sys::write_file(tmp, data)) sys::move(tmp, file);
 }
 
 // ------------------------------------------------------------------------------------------- layout
@@ -357,6 +360,75 @@ fn void close_search()
 	ui::unfocus();
 }
 
+// ------------------------------------------------------------------------------------------- open
+
+const int PICK_PDF = 1;
+String[1] pdf_types = { ".pdf" };
+
+<* Ctrl+O / the empty screen's button: starts in the last folder opened through it, else the open file's folder. *>
+fn void open_dialog()
+{
+	String dir = !txt::empty(&picker::last_dir) ? txt::view(&picker::last_dir) : !txt::empty(&file_path) ? txt::dirname(txt::view(&file_path)) : "~";
+	picker::start(PICK_PDF, FILE, "Open a PDF", dir, &pdf_types);
+}
+
+<* Show another document: everything of the old one (textures, layout, text, search, selection) is dropped. *>
+fn void open_path(String p) => @pool()
+{
+	txt::set(&file_path, p);
+	foreach (&t : texs) { if (t.tex.id) rl::unload_texture(t.tex); *t = {}; }
+	foreach (&t : texts) { libc::free(t.chars); libc::free(t.boxes); *t = {}; }
+	libc::free(offs);
+	offs = null;
+	laid_w = -1;
+	laid_zoom = -1;
+	k_px = 0;
+	scroll = 0;
+	zoom = 1;
+	cur_page = 0;
+	wanted_count = 0;
+	bar_scroll = 0;
+	searching = false;
+	search_text = {};
+	search_due = 0;
+	cur_hit = -1;
+	sel_page = -1;
+	selecting = false;
+	sel_a = -1;
+	sel_b = -1;
+	if (ui::focus >= 0) ui::unfocus();
+	engine::reopen(p);
+	rl::set_window_title(string::tformat("%s - mzp", txt::basename(p)).zstr_tcopy());
+	prefs_dirty = true;
+}
+
+fn void handle_pick()
+{
+	int why;
+	String path;
+	if (picker::take(&why, &path) && why == PICK_PDF) open_path(path);
+}
+
+<* No document: what to do next, centred. *>
+fn void draw_empty(float w, float h)
+{
+	float cy = h / 2 - 70;
+	ui::text(ui::I_FILE_PDF, w / 2 - ui::text_w(ui::I_FILE_PDF, 48) / 2, cy, 48, ui::BG3);
+	String msg = "No document open";
+	ui::text(msg, w / 2 - ui::text_w(msg, 18) / 2, cy + 64, 18, ui::FG4);
+	if (ui::button({ w / 2 - 100, cy + 100, 200, 40 }, "Open PDF", PRIMARY, ui::I_FOLDER_OPEN)) open_dialog();
+	String hint = "Ctrl + O";
+	ui::text(hint, w / 2 - ui::text_w(hint, 13) / 2, cy + 152, 13, ui::GRAY);
+}
+
+fn void draw_picker()
+{
+	ui::layer = 1;
+	if (picker::open) picker::draw();
+	ui::layer = 0;
+	handle_pick();
+}
+
 // ------------------------------------------------------------------------------------------- main
 
 fn int main(String[] args)
@@ -368,17 +440,16 @@ fn int main(String[] args)
 		{
 			case "--shot": case "--frames": case "--scale": i++;
 			case "--help": case "-h":
-				io::printn("Usage: mzp FILE.pdf\nScroll / Up / Down, Page Up / Down, Left / Right: pages. Ctrl +/-/0: zoom. Ctrl+S: sidebar (Pages, Contents).\nCtrl+F: search (Enter / Shift+Enter). Drag: select text, Ctrl+C: copy. F5: presenter view. Ctrl+K: shortcuts and About.\nCtrl+Shift +/-/0: interface zoom. q: quit.");
+				io::printn("Usage: mzp [FILE.pdf]\nWithout a file (or Ctrl+O): choose one.\nScroll / Up / Down, Page Up / Down, Left / Right: pages. Ctrl +/-/0: zoom. Ctrl+S: sidebar (Pages, Contents).\nCtrl+F: search (Enter / Shift+Enter). Drag: select text, Ctrl+C: copy. F5: presenter view. Ctrl+K: shortcuts and About.\nCtrl+Shift +/-/0: interface zoom. q: quit.");
 				return 0;
 			default: file = args[i];
 		}
 	}
-	if (!file.len) { io::eprintn("mzp: give a PDF file (mzp FILE.pdf)"); return 2; }
-	@pool() { sys::realpath(&file_path, file); };
+	if (file.len) @pool() { sys::realpath(&file_path, file); };
 	// The document is parsed on the engine thread while the window is created.
 	prefs_load();
 	engine::set_ocr(ocr_on);
-	engine::open(txt::view(&file_path));
+	if (file.len) engine::open(txt::view(&file_path));
 	defer prefs_save();
 	ui::open("mzp", 1100, 900, 360, 300, (float)ui_percent / 100);
 	ui::zoom_shift_only = true;
@@ -387,18 +458,33 @@ fn int main(String[] args)
 	defer engine::close();
 	defer foreach (&t : texs) if (t.tex.id) rl::unload_texture(t.tex);
 	ui::app_args(args);
-	@pool() { rl::set_window_title(string::tformat("%s - mzp", txt::basename(txt::view(&file_path))).zstr_tcopy()); };
+	picker::set_ext_icon(".pdf", ui::I_FILE_PDF);
+	@pool()
+	{
+		picker::add_place(ui::I_FILE_PDF, "Documents", txt::join(sys::home(), "Documents"));
+		if (file.len) rl::set_window_title(string::tformat("%s - mzp", txt::basename(txt::view(&file_path))).zstr_tcopy());
+	};
 	while (ui::running()) frame();
 	return 0;
 }
 
 fn void frame() => @pool()
 {
-	ui::frame_begin(settings_open);
+	ui::frame_begin(settings_open || picker::open);
 	float w = ui::sw();
 	float h = ui::sh();
 	if (ui::zoom_changed) { ui_percent = (int)math::round(ui::scale * 100); prefs_dirty = true; }
-	if (ui::ctrl_down() && ui::letter('k')) { settings_open = !settings_open; if (settings_open && settings_tab == 1) collect_about(); ui::top = settings_open ? 1 : 0; }
+	if (!picker::open && !presenting && ui::ctrl_down() && ui::letter('o') && ui::top == 0) open_dialog();
+	if (!picker::open && ui::ctrl_down() && ui::letter('k')) { settings_open = !settings_open; if (settings_open && settings_tab == 1) collect_about(); ui::top = settings_open ? 1 : 0; }
+	if (txt::empty(&file_path))
+	{
+		draw_empty(w, h);
+		if (ui::top == 0 && !picker::open && ui::letter('q')) ui::quit = true;
+		settings_draw();
+		draw_picker();
+		ui::frame_end();
+		return;
+	}
 	engine::State st = engine::get_state();
 	engine::Done d;
 	while (engine::take_done(&d)) upload(&d);
@@ -407,8 +493,10 @@ fn void frame() => @pool()
 	{
 		String msg = st == OPENING ? "Opening…" : txt::view(&engine::error);
 		ui::text(msg, 24, 24, 18, st == FAILED ? ui::RED : ui::GRAY);
-		if (ui::letter('q')) ui::quit = true;
+		if (ui::top == 0 && !picker::open && ui::letter('q')) ui::quit = true;
+		if (st == FAILED && ui::button({ 24, 64, 200, 40 }, "Open another", NORMAL, ui::I_FOLDER_OPEN)) open_dialog();
 		settings_draw();
+		draw_picker();
 		ui::frame_end();
 		return;
 	}
@@ -551,6 +639,7 @@ fn void frame() => @pool()
 	// No buttons on the page: search is Ctrl+F, presenter is F5 or the sidebar's Present button.
 	if (searching) draw_search(w, h);
 	settings_draw();
+	draw_picker();
 	ui::frame_end();
 }
 

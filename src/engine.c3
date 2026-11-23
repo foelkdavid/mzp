@@ -101,7 +101,7 @@ pdf::Document doc;
 fn void open(String file)
 {
 	txt::set(&path, file);
-	hits = libc::calloc(MAX_HITS, Hit::size);
+	if (!hits) hits = libc::calloc(MAX_HITS, Hit::size);
 	if (catch mutex.init()) { state = FAILED; return; }
 	if (catch wake.init()) { state = FAILED; return; }
 	if (catch worker.create(&work, null)) { state = FAILED; txt::set(&error, "Cannot start the PDF engine"); return; }
@@ -121,6 +121,37 @@ fn void close()
 	for (int i = 0; i < done_count; i++) libc::free(done[i].rgba);
 	if (text_ready) { libc::free(text_done.chars); libc::free(text_done.boxes); }
 	started = false;
+}
+
+<* Close the current document (joins the worker and OCR) and open another one. UI thread. *>
+fn void reopen(String file)
+{
+	close();
+	ocr::reset();
+	libc::free(sizes);
+	libc::free(outline);
+	sizes = null;
+	outline = null;
+	doc = null;
+	pages = 0;
+	outline_count = 0;
+	title = {};
+	author = {};
+	error = {};
+	quit = false;
+	state = OPENING;
+	want_count = 0;
+	done_count = 0;
+	text_request = -1;
+	text_ready = false;
+	query_len = 0;
+	search_gen++;
+	searching = false;
+	search_page = 0;
+	hit_count = 0;
+	ocr_waiting = -1;
+	text_waiting = -1;
+	open(file);
 }
 
 fn State get_state()

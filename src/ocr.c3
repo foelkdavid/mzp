@@ -141,6 +141,27 @@ fn void close()
 	for (int i = 0; i < queued; i++) libc::free(queue[i].gray);
 }
 
+<* After close() (engine thread joined): forget the document so detect() can run for the next one. UI thread. *>
+fn void reset()
+{
+	if (available) { wake.destroy(); mutex.destroy(); }
+	if (results) { for (int i = 0; i < pages; i++) free_result(results[i]); libc::free(results); }
+	libc::free(pending);
+	results = null;
+	pending = null;
+	available = false;
+	detected = false;
+	quit = false;
+	workers = 0;
+	queued = 0;
+	pages = 0;
+	program = {};
+	version = {};
+	installed = {};
+	langs = {};
+	cache_dir = {};
+}
+
 <* Recognized text of a page (memory, else the disk cache), or null. Engine thread. *>
 fn Result* get(int page) => @pool()
 {
