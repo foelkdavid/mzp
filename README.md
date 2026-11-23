@@ -9,10 +9,6 @@
   <img src="docs/screenshot.png" width="720" alt="mzp showing a document with the page thumbnails sidebar">
 </p>
 
-The first page is on screen in a blink, even for big manuals. Scroll, zoom, jump through page thumbnails or the
-table of contents, search, select and copy text, and present fullscreen. Pages render in the background, so
-scrolling never waits.
-
 **Press `Ctrl + K`** for all keyboard shortcuts, settings and the About page.
 
 ## Requirements to run
