@@ -459,11 +459,7 @@ fn int main(String[] args)
 	defer foreach (&t : texs) if (t.tex.id) rl::unload_texture(t.tex);
 	ui::app_args(args);
 	picker::set_ext_icon(".pdf", ui::I_FILE_PDF);
-	@pool()
-	{
-		picker::add_place(ui::I_FILE_PDF, "Documents", txt::join(sys::home(), "Documents"));
-		if (file.len) rl::set_window_title(string::tformat("%s - mzp", txt::basename(txt::view(&file_path))).zstr_tcopy());
-	};
+	if (file.len) @pool() { rl::set_window_title(string::tformat("%s - mzp", txt::basename(txt::view(&file_path))).zstr_tcopy()); };
 	while (ui::running()) frame();
 	return 0;
 }
