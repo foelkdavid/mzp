@@ -23,7 +23,7 @@ scrolling never waits.
 
 PDFium is bundled and installed with mzp.
 
-Optional, for **scanned PDFs**: [Tesseract](https://github.com/tesseract-ocr/tesseract) plus a language pack
+Optional, for **scanned PDFs**: [Tesseract](https://tesseract-ocr.github.io) plus a language pack
 (Void: `tesseract-ocr` and e.g. `tesseract-ocr-eng`). mzp then makes pages without text searchable and selectable,
 only when you search or select on them. Ctrl + K → About shows whether it was found.
 
@@ -62,7 +62,7 @@ c3c build uninstall --trust=full                                   # uninstall
 | [GLFW](https://www.glfw.org) 3.4 | Wayland window backend, inside raylib | [zlib](https://www.glfw.org/license.html) |
 | [CodeNewRoman Nerd Font Propo](https://www.nerdfonts.com/font-downloads) | embedded UI font ([Code New Roman](https://github.com/ryanoasis/nerd-fonts/tree/master/patched-fonts/CodeNewRoman) by Sam Radian + [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts) icons) | [SIL OFL 1.1](licenses/FONT-OFL.txt) |
 | [PDFium](https://pdfium.googlesource.com/pdfium/) via [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) | PDF rendering, text, search (bundled `libpdfium.so`) | [BSD-3-Clause](licenses/pdfium/pdfium.txt) (+ [third-party](licenses/pdfium/)), build scripts [MIT](licenses/pdfium/LICENSE) |
-| [Tesseract](https://github.com/tesseract-ocr/tesseract) | OCR for scanned pages, optional, run from the system | [Apache-2.0](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE) |
+| [Tesseract](https://tesseract-ocr.github.io) ([code](https://github.com/tesseract-ocr/tesseract)) | OCR for scanned pages, optional, run from the system | [Apache-2.0](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE) |
 
 The font, raylib and PDFium notices (with PDFium's third-party libraries: FreeType, ICU, libjpeg-turbo, …) are in
 [`licenses/`](licenses/) and are installed with the app.
