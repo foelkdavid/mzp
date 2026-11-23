@@ -43,7 +43,7 @@ Needs `c3c` 0.8.x and a Wayland session.
 
 ```sh
 git clone --recurse-submodules git@github.com:foelkdavid/mzp.git
-cd mzp && c3c build install --trust=full     # ~/.local/bin/mzp, ~/.local/lib/mzp/libpdfium.so, PDF launcher
+cd mzp && c3c build install --trust=full     # ~/.local/bin/mzp, ~/.local/lib/mzp/libpdfium.so, PDF launcher + icon
 git pull --recurse-submodules && c3c build install --trust=full    # update
 c3c build uninstall --trust=full
 ```

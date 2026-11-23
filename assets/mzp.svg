@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#282828"/>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="none" stroke="#504945" stroke-width="4"/>
+  <!-- a page with a folded corner, text lines and a red PDF band -->
+  <path d="M34 20h42l20 20v62a6 6 0 0 1-6 6H34a6 6 0 0 1-6-6V26a6 6 0 0 1 6-6z" fill="#ebdbb2"/>
+  <path d="M76 20v14a6 6 0 0 0 6 6h14z" fill="#bdae93"/>
+  <g stroke="#7c6f64" stroke-width="5" stroke-linecap="round">
+    <path d="M40 34h26"/>
+    <path d="M40 46h44"/>
+    <path d="M40 58h44"/>
+    <path d="M40 70h32"/>
+  </g>
+  <rect x="20" y="80" width="62" height="20" rx="5" fill="#fb4934"/>
+  <g fill="#282828">
+    <rect x="28" y="87" width="6" height="6" rx="1.5"/>
+    <rect x="40" y="87" width="16" height="6" rx="1.5"/>
+    <rect x="62" y="87" width="12" height="6" rx="1.5"/>
+  </g>
+</svg>
