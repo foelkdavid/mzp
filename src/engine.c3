@@ -2,6 +2,7 @@ module mzp::engine;
 import std::thread, std::math, libc;
 import bmu::txt;
 import pdfium::pdf;
+import mzp::ocr;
 
 // The PDF engine: one worker thread owns the PDFium document (PDFium is not thread-safe). The UI thread asks for
 // renders, page text and searches through a small locked exchange; results are plain buffers the UI uploads.
@@ -12,6 +13,8 @@ const int MAX_HITS = 20000;
 const int MAX_WANT = 32;
 const int MAX_DONE = 12;
 const long MAX_RENDER_PIXELS = 24_000_000;
+const int SCANNED_BELOW = 16;   // a page with fewer characters counts as a scan (OCR when available)
+const float OCR_DPI = 300;
 
 enum State { OPENING, READY, FAILED }
 enum Kind { PAGE, THUMB }
@@ -61,6 +64,37 @@ bool searching;
 int search_page;
 Hit* hits;                   // MAX_HITS, append-only per search
 int hit_count;
+int ocr_waiting = -1;         // page the search waits for (being recognized); -1 = none
+int text_waiting = -1;        // page whose text (selection) waits for OCR
+bool ocr_enabled = true;      // the user's setting (Ctrl+K); OCR runs only when also available
+
+fn bool use_ocr()
+{
+	mutex.lock();
+	bool on = ocr_enabled;
+	mutex.unlock();
+	return on && ocr::available;
+}
+
+<* UI: switch OCR on / off (takes effect for the next search or selection). *>
+fn void set_ocr(bool on)
+{
+	if (!started) { ocr_enabled = on; return; }
+	mutex.lock();
+	ocr_enabled = on;
+	wake.signal();
+	mutex.unlock();
+}
+
+<* UI: page the search waits for (being recognized) and page whose selection text waits; -1 = none. *>
+fn int ocr_status(int* text_wait)
+{
+	mutex.lock();
+	int w = searching ? ocr_waiting : -1;
+	*text_wait = text_waiting;
+	mutex.unlock();
+	return w;
+}
 
 pdf::Document doc;
 
@@ -159,6 +193,7 @@ fn void search(String utf8)
 	query[query_len] = 0;
 	searching = query_len > 0;
 	search_page = 0;
+	ocr_waiting = -1;
 	wake.signal();
 	mutex.unlock();
 }
@@ -249,6 +284,104 @@ fn void open_document()
 	pages = n;
 	state = READY;
 	mutex.unlock();
+	// OCR (optional): find tesseract off the UI thread; its workers wake us when a page is recognized.
+	libc::Stat st;
+	libc::stat(txt::z(&path), &st);
+	ocr::notify_mutex = &mutex;
+	ocr::notify_cv = &wake;
+	ocr::detect(txt::view(&path), st.st_size, st.st_mtime, n);
+}
+
+<* Render a page in grey at OCR resolution and queue it (once). Engine thread. *>
+fn void ocr_submit(int index)
+{
+	if (!use_ocr() || index < 0 || index >= pages || ocr::is_pending(index) || ocr::get(index)) return;
+	float pw = sizes[index * 2];
+	float ph = sizes[index * 2 + 1];
+	int width = (int)(pw / 72 * OCR_DPI);
+	int height = (int)(ph / 72 * OCR_DPI);
+	if ((long)width * height > MAX_RENDER_PIXELS) { float k = math::sqrt((float)MAX_RENDER_PIXELS / ((float)width * (float)height)); width = (int)((float)width * k); height = (int)((float)height * k); }
+	char* rgba = libc::malloc((usz)width * (usz)height * 4);
+	char* gray = libc::malloc((usz)width * (usz)height);
+	pdf::Page page = pdf::load_page(doc, index);
+	pdf::Bitmap bmp = rgba ? pdf::bitmap_create_ex(width, height, pdf::BITMAP_BGRA, rgba, width * 4) : null;
+	if (page && bmp && gray)
+	{
+		pdf::bitmap_fill_rect(bmp, 0, 0, width, height, 0xFFFFFFFF);
+		pdf::render_page(bmp, page, 0, 0, width, height, 0, pdf::RENDER_ANNOT | pdf::RENDER_REVERSE_BYTE_ORDER);
+		usz px = (usz)width * (usz)height;
+		for (usz i = 0; i < px; i++) gray[i] = (char)(((uint)rgba[i * 4] * 77 + (uint)rgba[i * 4 + 1] * 150 + (uint)rgba[i * 4 + 2] * 29) >> 8);
+		if (ocr::submit(index, gray, width, height)) gray = null;
+	}
+	if (bmp) pdf::bitmap_destroy(bmp);
+	if (page) pdf::close_page(page);
+	libc::free(rgba);
+	libc::free(gray);
+}
+
+<* Characters on a page: PDFium's text layer, or null with `scanned` set when it has (almost) none. *>
+fn int page_char_count(int index)
+{
+	pdf::Page page = pdf::load_page(doc, index);
+	pdf::TextPage text = page ? pdf::text_load(page) : null;
+	int n = text ? pdf::text_count(text) : 0;
+	if (text) pdf::text_close(text);
+	if (page) pdf::close_page(page);
+	return n;
+}
+
+fn void deliver_ocr_text(int index, ocr::Result* r)
+{
+	PageText t = { .page = index };
+	if (r && r.count)
+	{
+		t.chars = libc::malloc((usz)r.count * uint::size);
+		t.boxes = libc::malloc((usz)r.count * 4 * float::size);
+		if (t.chars && t.boxes)
+		{
+			libc::memcpy(t.chars, r.chars, (usz)r.count * uint::size);
+			libc::memcpy(t.boxes, r.boxes, (usz)r.count * 4 * float::size);
+			t.count = r.count;
+		}
+	}
+	mutex.lock();
+	if (text_ready) { libc::free(text_done.chars); libc::free(text_done.boxes); }
+	text_done = t;
+	text_ready = true;
+	mutex.unlock();
+}
+
+fn uint fold(uint c)
+{
+	if ((c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xDE && c != 0xD7)) return c + 32;
+	return c;
+}
+
+<* Case-insensitive search in recognized text; hits in page order. *>
+fn void search_ocr(int index, ocr::Result* r, ulong gen, ushort[] what, int len)
+{
+	if (!r || len <= 0) return;
+	for (int i = 0; i + len <= r.count; i++)
+	{
+		bool match = true;
+		for (int k = 0; k < len && match; k++) match = fold(r.chars[i + k]) == fold(what[k]);
+		if (!match) continue;
+		Hit h = { index, 1, 1, 0, 0 };
+		for (int k = i; k < i + len; k++)
+		{
+			float* b = &r.boxes[k * 4];
+			if (b[2] <= b[0]) continue;
+			h.x0 = math::min(h.x0, b[0]); h.y0 = math::min(h.y0, b[1]);
+			h.x1 = math::max(h.x1, b[2]); h.y1 = math::max(h.y1, b[3]);
+		}
+		if (h.x1 <= h.x0) continue;
+		mutex.lock();
+		bool current = gen == search_gen;
+		if (current && hit_count < MAX_HITS) hits[hit_count++] = h;
+		mutex.unlock();
+		if (!current) return;
+		i += len - 1;
+	}
 }
 
 fn void render(Want w)
@@ -288,6 +421,16 @@ fn void render(Want w)
 
 fn void extract_text(int index)
 {
+	if (use_ocr() && page_char_count(index) < SCANNED_BELOW)
+	{
+		ocr::Result* r = ocr::get(index);
+		if (r) { deliver_ocr_text(index, r); return; }
+		ocr_submit(index);
+		mutex.lock();
+		text_waiting = index;
+		mutex.unlock();
+		return;
+	}
 	PageText t = { .page = index };
 	pdf::Page page = pdf::load_page(doc, index);
 	pdf::TextPage text = page ? pdf::text_load(page) : null;
@@ -320,6 +463,29 @@ fn void extract_text(int index)
 	text_done = t;
 	text_ready = true;
 	mutex.unlock();
+}
+
+<* Search one page. Returns false when the page is a scan still being recognized (the search waits for it, so hits
+   stay in page order); meanwhile the next pages are queued for OCR too. *>
+fn bool search_page_once(int index, ulong gen, ushort[] what, int len)
+{
+	if (use_ocr() && page_char_count(index) < SCANNED_BELOW)
+	{
+		ocr::Result* r = ocr::get(index);
+		if (r) { search_ocr(index, r, gen, what, len); return true; }
+		ocr_submit(index);
+		// Keep the workers busy with the following scanned pages: two renders per call (~0.1 s each), so screen
+		// renders still interleave quickly.
+		int queued_now;
+		for (int p = index + 1; p < pages && p <= index + ocr::workers * 2 && queued_now < 2; p++)
+		{
+			if (ocr::is_pending(p) || ocr::get(p)) continue;
+			if (page_char_count(p) < SCANNED_BELOW) { ocr_submit(p); queued_now++; }
+		}
+		return false;
+	}
+	search_one(index, gen, what);
+	return true;
 }
 
 fn void search_one(int index, ulong gen, ushort[] what)
@@ -360,12 +526,23 @@ fn void search_one(int index, ulong gen, ushort[] what)
 
 fn int work(void* arg)
 {
+	// Temp memory for this thread (only the main thread has one implicitly).
+	@pool_init(mem, 256 * 1024) { run(); };
+	return 0;
+}
+
+fn void run()
+{
 	open_document();
 	while (true)
 	{
 		mutex.lock();
-		while (!quit && state == READY && text_request < 0 && (want_count == 0 || done_count >= MAX_DONE) && !searching) wake.wait(&mutex);
+		while (!quit && state == READY && text_request < 0 && (want_count == 0 || done_count >= MAX_DONE)
+			&& (!searching || (ocr_waiting >= 0 && ocr::is_pending(ocr_waiting)))
+			&& !(text_waiting >= 0 && !ocr::is_pending(text_waiting))) wake.wait(&mutex);
 		if (quit || state != READY) { mutex.unlock(); break; }
+		int text_ocr = -1;
+		if (text_waiting >= 0 && !ocr::is_pending(text_waiting)) { text_ocr = text_waiting; text_waiting = -1; }
 		int text_page = text_request;
 		text_request = -1;
 		Want w = { .page = -1 };
@@ -378,18 +555,29 @@ fn int work(void* arg)
 		int sp = -1;
 		ulong gen = search_gen;
 		ushort[256] what;
-		if (text_page < 0 && w.page < 0 && searching)
+		int len = query_len;
+		if (text_page < 0 && w.page < 0 && searching && !(ocr_waiting >= 0 && ocr::is_pending(ocr_waiting)))
 		{
-			sp = search_page++;
-			if (search_page >= pages) searching = false;
+			sp = search_page;
 			what = query;
 		}
 		mutex.unlock();
+		if (text_ocr >= 0) deliver_ocr_text(text_ocr, ocr::get(text_ocr));
 		if (text_page >= 0 && text_page < pages) { extract_text(text_page); }
 		else if (w.page >= 0) { render(w); }
-		else if (sp >= 0 && sp < pages) { search_one(sp, gen, &what); }
+		else if (sp >= 0 && sp < pages)
+		{
+			bool finished = search_page_once(sp, gen, &what, len);
+			mutex.lock();
+			if (gen == search_gen)
+			{
+				if (finished) { ocr_waiting = -1; search_page = sp + 1; if (search_page >= pages) searching = false; }
+				else { ocr_waiting = sp; }
+			}
+			mutex.unlock();
+		}
 	}
+	ocr::close();
 	if (doc) pdf::close_document(doc);
 	pdf::destroy_library();
-	return 0;
 }

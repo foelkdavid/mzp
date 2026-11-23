@@ -2,7 +2,7 @@ module mzp;
 import std::math, std::core::string, std::core::dstring, std::io, libc;
 import raylib6::rl;
 import bmu::ui, bmu::txt, bmu::sys;
-import mzp::engine;
+import mzp::engine, mzp::ocr;
 
 // mzp - manifest ze pdf. Continuous page view, Ctrl+S sidebar (Pages / Contents), Ctrl+F search, text selection +
 // Ctrl+C, presenter mode (F5). All PDF work happens on the engine thread; this file only lays out and draws.
@@ -68,6 +68,7 @@ float help_scroll;
 char[1024] config_file;
 int ui_percent;
 bool prefs_dirty;
+bool ocr_on = true;           // read scanned pages with tesseract (when available)
 char[4096] file_path;
 
 ui::Shortcut[*] help_rows = {
@@ -108,6 +109,7 @@ fn void prefs_load() => @pool()
 	{
 		if (line.starts_with("bar=")) bar = line == "bar=1";
 		if (line.starts_with("bar_tab=")) bar_tab = line == "bar_tab=1" ? 1 : 0;
+		if (line.starts_with("ocr=")) ocr_on = line != "ocr=0";
 		if (line.starts_with("ui_scale="))
 		{
 			if (try v = line[9..].to_int()) if (v == 0 || (v >= 75 && v <= 300)) ui_percent = v;
@@ -121,7 +123,7 @@ fn void prefs_save() => @pool()
 	String file = txt::view(&config_file);
 	if (!sys::mkdirs(txt::dirname(file))) return;
 	String tmp = txt::join(txt::dirname(file), "settings.tmp");
-	if (sys::write_file(tmp, string::tformat("bar=%d\nbar_tab=%d\nui_scale=%d\n", bar ? 1 : 0, bar_tab, ui_percent))) sys::move(tmp, file);
+	if (sys::write_file(tmp, string::tformat("bar=%d\nbar_tab=%d\nui_scale=%d\nocr=%d\n", bar ? 1 : 0, bar_tab, ui_percent, ocr_on ? 1 : 0))) sys::move(tmp, file);
 }
 
 // ------------------------------------------------------------------------------------------- layout
@@ -374,8 +376,9 @@ fn int main(String[] args)
 	if (!file.len) { io::eprintn("mzp: give a PDF file (mzp FILE.pdf)"); return 2; }
 	@pool() { sys::realpath(&file_path, file); };
 	// The document is parsed on the engine thread while the window is created.
-	engine::open(txt::view(&file_path));
 	prefs_load();
+	engine::set_ocr(ocr_on);
+	engine::open(txt::view(&file_path));
 	defer prefs_save();
 	ui::open("mzp", 1100, 900, 360, 300, (float)ui_percent / 100);
 	ui::zoom_shift_only = true;
@@ -539,6 +542,9 @@ fn void frame() => @pool()
 
 	// Page badge and the two buttons (or the search bar) at the top right.
 	String pos = string::tformat("%d / %d", cur_page + 1, engine::pages);
+	int text_wait;
+	engine::ocr_status(&text_wait);
+	if (text_wait >= 0) pos = string::tformat("recognizing p. %d… · %s", text_wait + 1, pos);
 	float pw = ui::text_w(pos, 13) + 16;
 	ui::panel({ w - pw - 10, h - 32, pw, 24 }, ui::BG, 4);
 	ui::text(pos, w - pw - 2, h - 27, 13, ui::FG4);
@@ -554,7 +560,7 @@ fn void draw_search(float w, float h) => @pool()
 	ui::panel(box, ui::BG, 6);
 	ui::outline(box, ui::BG2, 6);
 	bool submitted;
-	if (ui::input(ID_SEARCH, { box.x + 6, box.y + 4, 250, 36 }, &search_text, "Search", &submitted, ui::I_SEARCH))
+	if (ui::input(ID_SEARCH, { box.x + 6, box.y + 4, 200, 36 }, &search_text, "Search", &submitted, ui::I_SEARCH))
 	{
 		search_due = ui::now + 0.2;
 		cur_hit = -1;
@@ -565,8 +571,12 @@ fn void draw_search(float w, float h) => @pool()
 	// Jump to the first hit at or after the current page as soon as one exists.
 	if (cur_hit < 0 && n > 0 && search_due == 0) step_hit(1, h);
 	if (submitted) step_hit(ui::shift_down() ? -1 : 1, h);
+	int text_wait;
+	int scan = engine::ocr_status(&text_wait);
 	String count = txt::empty(&search_text) ? "" : n == 0 ? (running || search_due > 0 ? "…" : "no results") : string::tformat("%d / %d%s", cur_hit + 1, n, running ? "+" : "");
-	ui::text_fit(count, box.x + 264, box.y + 14, 90, 13, n ? ui::FG4 : ui::GRAY);
+	if (scan >= 0) count = string::tformat("%s%sreading scan p. %d", count, count.len ? " · " : "", scan + 1);
+	ui::text_fit(count, box.x + 214, box.y + 14, 140, 13, n || scan >= 0 ? ui::FG4 : ui::GRAY);
+	if (scan >= 0 && ui::hover({ box.x + 210, box.y, 146, box.height })) ui::tooltip(count);
 	if (ui::icon_button({ box.x + 358, box.y + 6, 30, 32 }, ui::I_LEFT, ui::FG4, "Previous (Shift+Enter)")) step_hit(-1, h);
 	if (ui::icon_button({ box.x + 390, box.y + 6, 30, 32 }, ui::I_RIGHT, ui::FG4, "Next (Enter)")) step_hit(1, h);
 	if (ui::icon_button({ box.x + 422, box.y + 6, 30, 32 }, ui::I_TIMES, ui::FG4, "Close (Escape)")) close_search();
@@ -669,6 +679,14 @@ fn void present(float w, float h) => @pool()
 
 // ------------------------------------------------------------------------------------------- Ctrl+K
 
+fn String ocr_line()
+{
+	if (!ocr::detected) return "checking…";
+	if (txt::empty(&ocr::program)) return "tesseract not found (install tesseract-ocr + a language, e.g. tesseract-ocr-eng)";
+	if (txt::empty(&ocr::langs)) return string::tformat("%s · no text language installed (have: %s)", txt::view(&ocr::version), txt::view(&ocr::installed));
+	return string::tformat("%s%s · using %s · installed: %s", txt::view(&ocr::version), ocr_on ? "" : " (off)", txt::view(&ocr::langs), txt::view(&ocr::installed));
+}
+
 fn void collect_about() => @pool()
 {
 	ui::about_reset("mzp", env::PROJECT_VERSION);
@@ -677,6 +695,7 @@ fn void collect_about() => @pool()
 	if (!txt::empty(&engine::author)) ui::about_add("Author", txt::view(&engine::author));
 	ui::about_add("Pages", string::tformat("%d", engine::pages));
 	ui::about_add("PDFium", "chromium/8165 (pdfium-binaries, BSD-3 / Apache-2.0)");
+	ui::about_add("OCR", ocr_line());
 	ui::about_add("Settings", txt::view(&config_file));
 }
 
@@ -688,10 +707,29 @@ fn void settings_draw() => @pool()
 	if (ui::dialog_header(box, ui::I_GEAR, "mzp") || rl::is_key_pressed(rl::RLKeyboardKey.ESCAPE)) settings_open = false;
 	float x = box.x + 16;
 	float bw = box.width - 32;
-	if (ui::button({ x, box.y + 54, bw / 2 - 4, 36 }, "Shortcuts", settings_tab == 0 ? PRIMARY : NORMAL)) settings_tab = 0;
-	if (ui::button({ x + bw / 2 + 4, box.y + 54, bw / 2 - 4, 36 }, "About", settings_tab == 1 ? PRIMARY : NORMAL)) { settings_tab = 1; collect_about(); }
+	float tw = (bw - 16) / 3;
+	if (ui::button({ x, box.y + 54, tw, 36 }, "Shortcuts", settings_tab == 0 ? PRIMARY : NORMAL)) settings_tab = 0;
+	if (ui::button({ x + tw + 8, box.y + 54, tw, 36 }, "General", settings_tab == 2 ? PRIMARY : NORMAL)) settings_tab = 2;
+	if (ui::button({ x + (tw + 8) * 2, box.y + 54, tw, 36 }, "About", settings_tab == 1 ? PRIMARY : NORMAL)) { settings_tab = 1; collect_about(); }
 	Rect area = { x, box.y + 102, bw, box.height - 118 };
 	if (settings_tab == 0) { help_scroll = ui::shortcut_table(area, &help_rows, help_scroll); }
-	else { ui::about_draw(area); }
+	else if (settings_tab == 1) { ui::about_draw(area); }
+	else
+	{
+		bool usable = ocr::detected && ocr::available;
+		if (usable)
+		{
+			if (ui::checkbox(area.x + 4, area.y + 8, "Read scanned pages (OCR)", &ocr_on)) { engine::set_ocr(ocr_on); prefs_dirty = true; }
+		}
+		else
+		{
+			// Greyed out: the setting is kept, but there is nothing to switch.
+			ui::outline({ area.x + 4, area.y + 8, 24, 24 }, ui::BG2, 4);
+			if (ocr_on) ui::text(ui::I_CHECK, area.x + 9, area.y + 12, 14, ui::BG3);
+			ui::text("Read scanned pages (OCR)", area.x + 38, area.y + 12, 15, ui::BG4);
+		}
+		ui::text_fit(ocr_line(), area.x + 4, area.y + 44, area.width - 8, 13, usable ? ui::FG4 : ui::GRAY);
+		ui::text_fit("Pages without a text layer are recognized with tesseract when you search or select; results are cached.", area.x + 4, area.y + 66, area.width - 8, 13, ui::GRAY);
+	}
 	ui::layer = 0;
 }

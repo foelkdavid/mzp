@@ -27,6 +27,16 @@ texture scaled meanwhile; thumbnails render only for visible sidebar rows; searc
 background (all 477 pages in ~0.5 s) without ever blocking scrolling. The sidebar state and the interface zoom are
 remembered in `$XDG_CONFIG_HOME/mzp/settings`.
 
+## Scanned PDFs (optional OCR)
+
+If [Tesseract](https://github.com/tesseract-ocr/tesseract) is installed (`tesseract` or Void's `tesseract-ocr`, plus
+a language pack such as `tesseract-ocr-eng` / `tesseract-ocr-deu`), search and text selection also work on pages
+without a text layer. Only such pages are recognized, only when you search or select on them, in parallel
+background processes (half the CPU cores, up to 4); scrolling never waits. Results are cached in
+`$XDG_CACHE_HOME/mzp/` (default `~/.cache/mzp/`), so reopening a document is instant. All installed text
+languages are used (Fraktur only if nothing else is installed). Ctrl+K → General switches OCR off; Ctrl+K → About
+shows whether Tesseract was found and which languages it has. Nothing is bundled.
+
 ## Build and install
 
 Needs `c3c` 0.8.x and a Wayland session.
