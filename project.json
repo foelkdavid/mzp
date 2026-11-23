@@ -1,15 +1,43 @@
 {
   "langrev": "1",
   "version": "0.1.0",
-  "opt": "O1",
+  "opt": "O2",
   "build-dir": "build",
   "output": "build",
-  "dependency-search-paths": ["bmu/lib"],
+  "dependency-search-paths": [
+    "bmu/lib",
+    "lib"
+  ],
   "targets": {
     "mzp": {
       "type": "executable",
-      "sources": ["src/**"],
-      "dependencies": ["raylib6", "bmu"]
+      "sources": [
+        "src/**"
+      ],
+      "dependencies": [
+        "raylib6",
+        "bmu",
+        "pdfium"
+      ],
+      "link-args": [
+        "-Wl,-rpath,\\$ORIGIN/../lib/pdfium.c3l/linux-x64",
+        "-Wl,-rpath,\\$ORIGIN/../lib/mzp"
+      ]
+    },
+    "install": {
+      "type": "prepare",
+      "depends-on": [
+        "mzp"
+      ],
+      "exec": [
+        "python3 install.py install"
+      ]
+    },
+    "uninstall": {
+      "type": "prepare",
+      "exec": [
+        "python3 install.py uninstall"
+      ]
     }
   }
 }

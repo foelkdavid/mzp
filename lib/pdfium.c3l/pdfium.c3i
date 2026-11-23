@@ -1,0 +1,55 @@
+// C3 binding for the PDFium subset mzp uses (pdfium-binaries chromium/8165, BSD-3 / Apache-2.0).
+// PDFium is not thread-safe: call everything from one thread.
+module pdfium::pdf;
+
+alias Document = void*;
+alias Page = void*;
+alias Bitmap = void*;
+alias TextPage = void*;
+alias Search = void*;
+alias Bookmark = void*;
+alias Dest = void*;
+alias Action = void*;
+
+const CInt BITMAP_BGRA = 4;          // with RENDER_REVERSE_BYTE_ORDER the bytes come out as RGBA
+const CInt RENDER_ANNOT = 0x01;
+const CInt RENDER_LCD_TEXT = 0x02;
+const CInt RENDER_REVERSE_BYTE_ORDER = 0x10;
+const CULong MATCH_CASE = 0x01;
+const CULong MATCH_WHOLE_WORD = 0x02;
+const CULong ERR_PASSWORD = 4;
+
+fn void init_library() @cname("FPDF_InitLibrary");
+fn void destroy_library() @cname("FPDF_DestroyLibrary");
+fn Document load_document(ZString path, ZString password) @cname("FPDF_LoadDocument");
+fn void close_document(Document doc) @cname("FPDF_CloseDocument");
+fn CULong last_error() @cname("FPDF_GetLastError");
+fn CInt page_count(Document doc) @cname("FPDF_GetPageCount");
+fn CInt page_size(Document doc, CInt index, double* width, double* height) @cname("FPDF_GetPageSizeByIndex");
+fn Page load_page(Document doc, CInt index) @cname("FPDF_LoadPage");
+fn void close_page(Page page) @cname("FPDF_ClosePage");
+fn CULong meta_text(Document doc, ZString tag, void* buffer, CULong buflen) @cname("FPDF_GetMetaText");
+
+fn Bitmap bitmap_create_ex(CInt width, CInt height, CInt format, void* first_scan, CInt stride) @cname("FPDFBitmap_CreateEx");
+fn CInt bitmap_fill_rect(Bitmap bitmap, CInt left, CInt top, CInt width, CInt height, CULong color) @cname("FPDFBitmap_FillRect");
+fn void bitmap_destroy(Bitmap bitmap) @cname("FPDFBitmap_Destroy");
+fn void render_page(Bitmap bitmap, Page page, CInt x, CInt y, CInt w, CInt h, CInt rotate, CInt flags) @cname("FPDF_RenderPageBitmap");
+
+fn TextPage text_load(Page page) @cname("FPDFText_LoadPage");
+fn void text_close(TextPage text) @cname("FPDFText_ClosePage");
+fn CInt text_count(TextPage text) @cname("FPDFText_CountChars");
+fn CUInt text_unicode(TextPage text, CInt index) @cname("FPDFText_GetUnicode");
+fn CInt text_char_box(TextPage text, CInt index, double* left, double* right, double* bottom, double* top) @cname("FPDFText_GetCharBox");
+fn Search find_start(TextPage text, ushort* what, CULong flags, CInt start) @cname("FPDFText_FindStart");
+fn CInt find_next(Search search) @cname("FPDFText_FindNext");
+fn CInt find_index(Search search) @cname("FPDFText_GetSchResultIndex");
+fn CInt find_count(Search search) @cname("FPDFText_GetSchCount");
+fn void find_close(Search search) @cname("FPDFText_FindClose");
+
+fn Bookmark bookmark_first_child(Document doc, Bookmark parent) @cname("FPDFBookmark_GetFirstChild");
+fn Bookmark bookmark_next(Document doc, Bookmark bookmark) @cname("FPDFBookmark_GetNextSibling");
+fn CULong bookmark_title(Bookmark bookmark, void* buffer, CULong buflen) @cname("FPDFBookmark_GetTitle");
+fn Dest bookmark_dest(Document doc, Bookmark bookmark) @cname("FPDFBookmark_GetDest");
+fn Action bookmark_action(Bookmark bookmark) @cname("FPDFBookmark_GetAction");
+fn Dest action_dest(Document doc, Action action) @cname("FPDFAction_GetDest");
+fn CInt dest_page(Document doc, Dest dest) @cname("FPDFDest_GetDestPageIndex");

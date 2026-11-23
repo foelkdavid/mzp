@@ -1,0 +1,10 @@
+{
+  "provides": "pdfium",
+  "targets": {
+    "linux-x64": {
+      "link-args": [],
+      "dependencies": [],
+      "linked-libraries": ["pdfium"]
+    }
+  }
+}

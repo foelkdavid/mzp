@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=mzp
+Comment=Minimal PDF viewer
+Exec=@EXEC@ %f
+Icon=application-pdf
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;
+StartupNotify=false
