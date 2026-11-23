@@ -16,7 +16,7 @@ mzp document.pdf
 | Ctrl + S | sidebar: Pages (thumbnails) / Contents (table of contents) |
 | Ctrl + F | search; Enter / Shift + Enter or ‹ › for next / previous hit |
 | Drag on a page, Ctrl + C | select text, copy it |
-| F5 or ▶ | presenter view: fullscreen, Right / Down / Space next, Left / Up previous, Escape leaves |
+| F5 or Present (sidebar) | presenter view: fullscreen, Right / Down / Space next, Left / Up previous, Escape leaves |
 | Ctrl + K | shortcuts and About |
 | Ctrl + Shift + / - / 0 | interface zoom |
 | q | quit |

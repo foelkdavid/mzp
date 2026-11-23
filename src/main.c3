@@ -84,7 +84,7 @@ ui::Shortcut[*] help_rows = {
 	{ "SIDEBAR", "", true },
 	{ "Ctrl + S", "Show / hide (Pages, Contents)", false },
 	{ "PRESENT", "", true },
-	{ "F5", "Presenter view (fullscreen)", false },
+	{ "F5 / Present (sidebar)", "Presenter view (fullscreen)", false },
 	{ "Right / Down / Space", "Next page", false },
 	{ "Left / Up", "Previous page", false },
 	{ "Escape", "Leave presenter view", false },
@@ -542,16 +542,8 @@ fn void frame() => @pool()
 	float pw = ui::text_w(pos, 13) + 16;
 	ui::panel({ w - pw - 10, h - 32, pw, 24 }, ui::BG, 4);
 	ui::text(pos, w - pw - 2, h - 27, 13, ui::FG4);
-	if (searching)
-	{
-		draw_search(w, h);
-	}
-	else
-	{
-		ui::panel({ w - 92, 4, 88, 44 }, ui::BG, 6); // keeps the buttons readable on a white page
-		if (ui::icon_button({ w - 46, 8, 36, 36 }, ui::I_PLAY, ui::FG4, "Presenter view (F5)")) start_presenting();
-		if (ui::icon_button({ w - 86, 8, 36, 36 }, ui::I_SEARCH, ui::FG4, "Search (Ctrl+F)")) { searching = true; ui::focus_on(ID_SEARCH, &search_text); }
-	}
+	// No buttons on the page: search is Ctrl+F, presenter is F5 or the sidebar's Present button.
+	if (searching) draw_search(w, h);
 	settings_draw();
 	ui::frame_end();
 }
@@ -588,7 +580,10 @@ fn void draw_bar(float h, engine::Want[] list, int* n) => @pool()
 	ui::panel({ BAR_W - 1, 0, 1, h }, ui::BG2);
 	if (ui::button({ 8, 8, BAR_W / 2 - 12, 32 }, "Pages", bar_tab == 0 ? PRIMARY : NORMAL)) { bar_tab = 0; bar_scroll = 0; prefs_dirty = true; }
 	if (ui::button({ BAR_W / 2 + 4, 8, BAR_W / 2 - 12, 32 }, "Contents", bar_tab == 1 ? PRIMARY : NORMAL)) { bar_tab = 1; bar_scroll = 0; prefs_dirty = true; }
-	Rect area = { 0, 48, BAR_W - 1, h - 48 };
+	Rect area = { 0, 48, BAR_W - 1, h - 48 - 52 };
+	ui::panel({ 0, h - 52, BAR_W - 1, 52 }, ui::BG);
+	ui::hline(0, h - 52, BAR_W - 1, ui::BG2);
+	if (ui::button({ 8, h - 44, BAR_W - 17, 36 }, "Present (F5)", NORMAL, ui::I_PLAY)) start_presenting();
 	if (bar_tab == 0)
 	{
 		float content = (float)engine::pages * THUMB_ROW;
