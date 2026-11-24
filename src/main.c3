@@ -557,7 +557,7 @@ fn void frame() => @pool()
 	int last = page_at(scroll + h);
 	engine::Want[engine::MAX_WANT] list;
 	int n;
-	float sc = ui::scale;
+	float sc = ui::px;
 	add_want(&list, &n, cur_page, (int)(engine::sizes[cur_page * 2] * k_px * sc), PAGE);
 	for (int i = first; i <= last; i++) add_want(&list, &n, i, (int)(engine::sizes[i * 2] * k_px * sc), PAGE);
 	if (last + 1 < engine::pages) add_want(&list, &n, last + 1, (int)(engine::sizes[(last + 1) * 2] * k_px * sc), PAGE);
@@ -699,7 +699,7 @@ fn void draw_bar(float h, engine::Want[] list, int* n) => @pool()
 			Tex* t = find_tex(i, THUMB);
 			if (!t) t = find_tex(i, PAGE); // a full page texture scales down fine
 			if (t) { t.used = ++clock; rl::draw_texture_pro(t.tex, { 0, 0, (float)t.tex.width, (float)t.tex.height }, pr, { 0, 0 }, 0, rl::WHITE); }
-			else { add_want(list, n, i, (int)(pw * k * ui::scale), THUMB); }
+			else { add_want(list, n, i, (int)(pw * k * ui::px), THUMB); }
 			ui::text(string::tformat("%d", i + 1), cell.x + cell.width / 2 - 8, cell.y + cell.height - 24, 13, i == cur_page ? ui::FG : ui::FG4);
 			if (ui::clicked(cell)) go_page(i);
 		}
@@ -754,8 +754,8 @@ fn void present(float w, float h) => @pool()
 	Rect r = { (w - pw * k) / 2, (h - ph * k) / 2, pw * k, ph * k };
 	engine::Want[4] list;
 	int n;
-	add_want(&list, &n, present_page, (int)(pw * k * ui::scale), PAGE);
-	if (present_page < last) add_want(&list, &n, present_page + 1, (int)(engine::sizes[(present_page + 1) * 2] * k * ui::scale), PAGE);
+	add_want(&list, &n, present_page, (int)(pw * k * ui::px), PAGE);
+	if (present_page < last) add_want(&list, &n, present_page + 1, (int)(engine::sizes[(present_page + 1) * 2] * k * ui::px), PAGE);
 	send_wants(&list, n);
 	Tex* t = find_tex(present_page, PAGE);
 	ui::panel(r, PAGE_WHITE);
