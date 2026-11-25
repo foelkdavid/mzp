@@ -45,7 +45,7 @@ def main():
     desktop = data / "applications/mzp.desktop"
     icon = data / "icons/hicolor/scalable/apps/mzp.svg"
     licenses = data / "mzp/licenses"
-    notices = ("FONT-OFL.txt", "RAYLIB-LICENSE.txt")
+    notices = ("FONT-OFL.txt", "RAYLIB-LICENSE.txt", "BMU-LICENSE.txt")
     libdir = home / ".local/lib/mzp"
     pdfium = libdir / "libpdfium.so"
     if sys.argv[1] == "uninstall":
