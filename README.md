@@ -62,3 +62,7 @@ c3c build uninstall --trust=full                                   # uninstall
 
 The font, raylib and PDFium notices (with PDFium's third-party libraries: FreeType, ICU, libjpeg-turbo, …) are in
 [`licenses/`](licenses/) and are installed with the app.
+
+## License
+
+mzp is MIT-licensed (see [`LICENSE`](LICENSE)); the third-party parts keep their own licenses listed above.

@@ -43,7 +43,7 @@ jobs:
           mkdir -p "$d/bin" "$d/lib/mzp"
           cp build/mzp "$d/bin/"
           cp lib/pdfium.c3l/linux-x64/libpdfium.so "$d/lib/mzp/"
-          cp README.md assets/mzp.svg "$d/"
+          cp README.md LICENSE assets/mzp.svg "$d/"
           sed 's|@EXEC@|mzp|' mzp.desktop > "$d/mzp.desktop"
           cp -r licenses "$d/"
           cp release/install release/uninstall "$d/"
