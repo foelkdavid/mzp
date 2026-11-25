@@ -1,0 +1,23 @@
+#!/bin/sh
+# Install this mzp release for the current user: ~/.local/bin/mzp, ~/.local/lib/mzp/libpdfium.so (found through
+# the binary's rpath $ORIGIN/../lib/mzp), desktop launcher, icon, license notices.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+case $data in /*) ;; *) echo "XDG_DATA_HOME must be absolute" >&2; exit 1 ;; esac
+bin=$HOME/.local/bin
+lib=$HOME/.local/lib/mzp
+mkdir -p "$bin" "$lib" "$data/applications" "$data/icons/hicolor/scalable/apps" "$data/mzp/licenses"
+# Replace the files (new inodes) so reinstalling works while mzp is running.
+cp "$here/lib/mzp/libpdfium.so" "$lib/.pdfium-new" && chmod 755 "$lib/.pdfium-new" && mv -f "$lib/.pdfium-new" "$lib/libpdfium.so"
+cp "$here/bin/mzp" "$bin/.mzp-new" && chmod 755 "$bin/.mzp-new" && mv -f "$bin/.mzp-new" "$bin/mzp"
+rm -rf "$data/mzp/licenses/pdfium"
+cp -r "$here/licenses/pdfium" "$data/mzp/licenses/pdfium"
+cp "$here/licenses/FONT-OFL.txt" "$here/licenses/RAYLIB-LICENSE.txt" "$data/mzp/licenses/"
+exec_path=$(printf '%s' "$bin/mzp" | sed 's/[\\"`$]/\\&/g; s/%/%%/g')
+sed "s|^Exec=.*|Exec=\"$exec_path\" %f|" "$here/mzp.desktop" > "$data/applications/mzp.desktop"
+cp "$here/mzp.svg" "$data/icons/hicolor/scalable/apps/mzp.svg"
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$data/applications" >/dev/null 2>&1 || true
+[ -f "$data/icons/hicolor/icon-theme.cache" ] && command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$data/icons/hicolor" || true
+echo "Installed $bin/mzp, $lib/libpdfium.so, $data/applications/mzp.desktop and the icon."
+case ":$PATH:" in *":$bin:"*) ;; *) echo "Add ~/.local/bin to PATH to run mzp from a terminal." ;; esac

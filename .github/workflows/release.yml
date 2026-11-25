@@ -46,6 +46,7 @@ jobs:
           cp README.md assets/mzp.svg "$d/"
           sed 's|@EXEC@|mzp|' mzp.desktop > "$d/mzp.desktop"
           cp -r licenses "$d/"
+          cp release/install release/uninstall "$d/"
           tar czf "$d.tar.gz" "$d"
           echo "PKG=$d.tar.gz" >> "$GITHUB_ENV"
 
@@ -73,7 +74,7 @@ jobs:
             |---|---|
             | `mzp-*-linux-x64-wayland.tar.gz` | Linux x86_64, Wayland session (no X11 / XWayland), OpenGL 3.3 |
 
-            Unpack and run `./bin/mzp [FILE.pdf]` (it finds `lib/mzp/libpdfium.so` next to it), or copy `bin/mzp` to
-            `~/.local/bin` and `lib/mzp/` to `~/.local/lib/mzp/`.
+            Unpack, then `./install` (to `~/.local`: binary, launcher, icon) or `./uninstall`; no root needed.
+            Or run it in place: `./bin/mzp`.
             Optional for scanned PDFs: Tesseract + a language pack (e.g. `tesseract-ocr-eng`).
             Press Ctrl + K for all shortcuts.
